@@ -4,11 +4,11 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/sunliang711/crypto-km/utils"
 	"github.com/tyler-smith/go-bip39"
 )
 
@@ -31,13 +31,8 @@ const ENTROPY_BIT_SIZE_24 = 32 * 8
 // newCmd represents the new command
 var newCmd = &cobra.Command{
 	Use:   "new",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "create a random mnemonic",
+	Long:  `create a random mnemonic`,
 	Run: func(cmd *cobra.Command, args []string) {
 		createMnemonic(cmd, args)
 	},
@@ -94,10 +89,9 @@ func createMnemonic(cmd *cobra.Command, args []string) {
 	}
 
 	if output != "" {
-		if _, err := os.Stat(output); errors.Is(err, os.ErrNotExist) {
-			os.WriteFile(output, []byte(mnemonic), 0600)
-		} else {
-			fmt.Fprintf(os.Stderr, "file %s already exists, quit", output)
+		err = utils.WriteFileWhenNotExists(output, []byte(mnemonic), 0600)
+		if err != nil {
+			fmt.Fprint(os.Stderr, err)
 		}
 	} else {
 		fmt.Printf("%s\n", mnemonic)

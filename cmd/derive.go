@@ -4,30 +4,22 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/spf13/cobra"
+	"github.com/sunliang711/crypto-km/utils"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
 )
 
-const QUOTE_PREFIX = 0x80000000
-
 // deriveCmd represents the derive command
 var deriveCmd = &cobra.Command{
 	Use:   "derive",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "derive secret key from mnemonic password and path",
+	Long:  `derive secret key from mnemonic password and path`,
 	Run: func(cmd *cobra.Command, args []string) {
 		derive(cmd, args)
 	},
@@ -48,9 +40,34 @@ func init() {
 
 	deriveCmd.Flags().String("mnemonic", "", "mnemonic")
 	deriveCmd.Flags().String("password", "", "password")
+	deriveCmd.Flags().Bool("enter-pass", false, "enter password in safe way")
 	deriveCmd.Flags().String("path", "", "hd path")
 	deriveCmd.Flags().StringP("output", "o", "", "output file, print to stdout if empty")
 	deriveCmd.Flags().Bool("with-seed", false, "show seed")
+	deriveCmd.Flags().Bool("json", false, "output json format")
+
+}
+
+type OutputKey struct {
+	SecretKey string `json:"secret_key,omitempty"`
+	PublicKey string `json:"public_key,omitempty"`
+	Seed      string `json:"seed,omitempty"`
+}
+
+func (outputKey *OutputKey) JsonString() (string, error) {
+	bytes, err := json.Marshal(outputKey)
+	if err != nil {
+		return "", err
+	}
+	return string(bytes), nil
+}
+
+func (outputKey *OutputKey) String() string {
+	result := fmt.Sprintf("secret key: %s\npublic key: %s\n", outputKey.SecretKey, outputKey.PublicKey)
+	if outputKey.Seed != "" {
+		result += fmt.Sprintf("seed: %s\n", outputKey.Seed)
+	}
+	return result
 }
 
 func derive(cmd *cobra.Command, args []string) {
@@ -58,13 +75,29 @@ func derive(cmd *cobra.Command, args []string) {
 		outputContent string
 		sk            string
 		pubkey        string
+		password      string
+		err           error
 	)
 
 	output, _ := cmd.Flags().GetString("output")
-	// TODO: read mnemonic with no echo
 	mnemonic, _ := cmd.Flags().GetString("mnemonic")
-	// TODO: read password with no echo
-	password, _ := cmd.Flags().GetString("password")
+	mnemonic, err = utils.ReadSecret(mnemonic, "Enter mnemonic: ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read mnemonic error: %s", err)
+		return
+	}
+
+	jsonFormat, _ := cmd.Flags().GetBool("json")
+	enterPass, _ := cmd.Flags().GetBool("enter-pass")
+	if enterPass {
+		password, err = utils.ReadSecret(password, "Enter password: ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "read password error: %s", err)
+			return
+		}
+	} else {
+		password, _ = cmd.Flags().GetString("password")
+	}
 
 	path, _ := cmd.Flags().GetString("path")
 	withSeed, _ := cmd.Flags().GetBool("with-seed")
@@ -82,7 +115,7 @@ func derive(cmd *cobra.Command, args []string) {
 		sk = hexutil.Encode(rootKey.Key)
 		pubkey = hexutil.Encode(rootKey.PublicKey().Key)
 	} else {
-		derivedKey, err := _derive(rootKey, path)
+		derivedKey, err := utils.DeriveByPath(rootKey, path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "derive error: %s\n", err)
 			return
@@ -92,49 +125,30 @@ func derive(cmd *cobra.Command, args []string) {
 	}
 
 	// output to file or stdout
-	outputContent = fmt.Sprintf("secret key: %s\npubkey: %s\n", sk, pubkey)
+	outputKey := OutputKey{SecretKey: sk, PublicKey: pubkey}
+
 	if withSeed {
-		outputContent += fmt.Sprintf("seed: %s\n", hexutil.Encode(seed))
+		// outputContent += fmt.Sprintf("seed: %s\n", hexutil.Encode(seed))
+		outputKey.Seed = hexutil.Encode(seed)
+	}
+
+	if jsonFormat {
+		outputContent, err = outputKey.JsonString()
+		if err != nil {
+			fmt.Fprint(os.Stderr, err)
+			return
+		}
+	} else {
+		outputContent = outputKey.String()
 	}
 
 	if output != "" {
-		if _, err := os.Stat(output); errors.Is(err, os.ErrNotExist) {
-			os.WriteFile(output, []byte(outputContent), 0600)
-		} else {
-			fmt.Fprintf(os.Stderr, "file %s already exists, quit", output)
+		err = utils.WriteFileWhenNotExists(output, []byte(outputContent), 0600)
+		if err != nil {
+			fmt.Fprint(os.Stderr, err)
+			return
 		}
 	} else {
 		fmt.Print(outputContent)
 	}
-}
-
-func _derive(key *bip32.Key, path string) (*bip32.Key, error) {
-	if !strings.HasPrefix(path, "m/") {
-		return nil, errors.New("invalid path prefix")
-	}
-
-	path = strings.TrimPrefix(path, "m/")
-	pathIndice := strings.Split(path, "/")
-	childKey := key
-	for _, pathIndex := range pathIndice {
-		quote := false
-		if strings.HasSuffix(pathIndex, "'") {
-			pathIndex = strings.TrimRight(pathIndex, "'")
-			quote = true
-		}
-		index, err := strconv.Atoi(pathIndex)
-		if err != nil {
-			return nil, errors.New("invalid path field")
-		}
-
-		if quote {
-			index += QUOTE_PREFIX
-		}
-		childKey, err = childKey.NewChildKey(uint32(index))
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return childKey, nil
 }
