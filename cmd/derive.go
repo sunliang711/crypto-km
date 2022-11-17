@@ -41,17 +41,28 @@ func init() {
 	deriveCmd.Flags().String("mnemonic", "", "mnemonic")
 	deriveCmd.Flags().String("password", "", "password")
 	deriveCmd.Flags().Bool("enter-pass", false, "enter password in safe way")
+
 	deriveCmd.Flags().String("path", "", "hd path")
+	deriveCmd.Flags().Uint("start", 0, "start index when hd path contains place holder(x)")
+	deriveCmd.Flags().Uint("count", 1, "derive count when hd path contains place holder(x)")
+
 	deriveCmd.Flags().StringP("output", "o", "", "output file, print to stdout if empty")
-	deriveCmd.Flags().Bool("with-seed", false, "show seed")
+	// deriveCmd.Flags().Bool("with-seed", false, "show seed")
 	deriveCmd.Flags().Bool("json", false, "output json format")
 
 }
 
+type Key struct {
+	Path      string `json:"path"`
+	SecretKey string `json:"secret_key"`
+	PublicKey string `json:"public_key"`
+}
+
 type OutputKey struct {
-	SecretKey string `json:"secret_key,omitempty"`
-	PublicKey string `json:"public_key,omitempty"`
-	Seed      string `json:"seed,omitempty"`
+	Seed string `json:"seed,omitempty"`
+	Keys []Key  `json:"keys"`
+	// SecretKey string `json:"secret_key,omitempty"`
+	// PublicKey string `json:"public_key,omitempty"`
 }
 
 func (outputKey *OutputKey) JsonString() (string, error) {
@@ -63,9 +74,12 @@ func (outputKey *OutputKey) JsonString() (string, error) {
 }
 
 func (outputKey *OutputKey) String() string {
-	result := fmt.Sprintf("secret key: %s\npublic key: %s\n", outputKey.SecretKey, outputKey.PublicKey)
+	var result string
 	if outputKey.Seed != "" {
 		result += fmt.Sprintf("seed: %s\n", outputKey.Seed)
+	}
+	for _, key := range outputKey.Keys {
+		result += fmt.Sprintf("path: %s\nsecret key: %s\npublic key: %s\n", key.Path, key.SecretKey, key.PublicKey)
 	}
 	return result
 }
@@ -73,8 +87,6 @@ func (outputKey *OutputKey) String() string {
 func derive(cmd *cobra.Command, args []string) {
 	var (
 		outputContent string
-		sk            string
-		pubkey        string
 		password      string
 		err           error
 	)
@@ -100,8 +112,8 @@ func derive(cmd *cobra.Command, args []string) {
 	}
 
 	path, _ := cmd.Flags().GetString("path")
-	withSeed, _ := cmd.Flags().GetBool("with-seed")
-
+	start, _ := cmd.Flags().GetUint("start")
+	count, _ := cmd.Flags().GetUint("count")
 	seed := bip39.NewSeed(mnemonic, password)
 
 	rootKey, err := bip32.NewMasterKey(seed)
@@ -110,26 +122,24 @@ func derive(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	outputKey := OutputKey{Seed: hexutil.Encode(seed)}
+
 	// return root sk when path is empty
 	if path == "" {
-		sk = hexutil.Encode(rootKey.Key)
-		pubkey = hexutil.Encode(rootKey.PublicKey().Key)
+		sk := hexutil.Encode(rootKey.Key)
+		pubkey := hexutil.Encode(rootKey.PublicKey().Key)
+		outputKey.Keys = append(outputKey.Keys, Key{Path: path, SecretKey: sk, PublicKey: pubkey})
 	} else {
-		derivedKey, err := utils.DeriveByPath(rootKey, path)
+		keys, paths, err := utils.DerivesByPath(rootKey, path, start, count)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "derive error: %s\n", err)
 			return
 		}
-		sk = hexutil.Encode(derivedKey.Key)
-		pubkey = hexutil.Encode(derivedKey.PublicKey().Key)
-	}
-
-	// output to file or stdout
-	outputKey := OutputKey{SecretKey: sk, PublicKey: pubkey}
-
-	if withSeed {
-		// outputContent += fmt.Sprintf("seed: %s\n", hexutil.Encode(seed))
-		outputKey.Seed = hexutil.Encode(seed)
+		for i := range keys {
+			sk := hexutil.Encode(keys[i].Key)
+			pubkey := hexutil.Encode(keys[i].PublicKey().Key)
+			outputKey.Keys = append(outputKey.Keys, Key{Path: paths[i], SecretKey: sk, PublicKey: pubkey})
+		}
 	}
 
 	if jsonFormat {
