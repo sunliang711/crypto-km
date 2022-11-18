@@ -47,7 +47,6 @@ func init() {
 	deriveCmd.Flags().Uint("count", 1, "derive count when hd path contains place holder(x)")
 
 	deriveCmd.Flags().StringP("output", "o", "", "output file, print to stdout if empty")
-	// deriveCmd.Flags().Bool("with-seed", false, "show seed")
 	deriveCmd.Flags().Bool("json", false, "output json format")
 
 }
@@ -61,8 +60,6 @@ type Key struct {
 type OutputKey struct {
 	Seed string `json:"seed,omitempty"`
 	Keys []Key  `json:"keys"`
-	// SecretKey string `json:"secret_key,omitempty"`
-	// PublicKey string `json:"public_key,omitempty"`
 }
 
 func (outputKey *OutputKey) JsonString() (string, error) {
@@ -96,7 +93,7 @@ func derive(cmd *cobra.Command, args []string) {
 	mnemonic, err = utils.ReadSecret(mnemonic, "Enter mnemonic: ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "read mnemonic error: %s", err)
-		return
+		os.Exit(1)
 	}
 
 	jsonFormat, _ := cmd.Flags().GetBool("json")
@@ -105,7 +102,7 @@ func derive(cmd *cobra.Command, args []string) {
 		password, err = utils.ReadSecret(password, "Enter password: ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "read password error: %s", err)
-			return
+			os.Exit(1)
 		}
 	} else {
 		password, _ = cmd.Flags().GetString("password")
@@ -119,7 +116,7 @@ func derive(cmd *cobra.Command, args []string) {
 	rootKey, err := bip32.NewMasterKey(seed)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Create master key error: %s\n", err)
-		return
+		os.Exit(1)
 	}
 
 	outputKey := OutputKey{Seed: hexutil.Encode(seed)}
@@ -133,7 +130,7 @@ func derive(cmd *cobra.Command, args []string) {
 		keys, paths, err := utils.DerivesByPath(rootKey, path, start, count)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "derive error: %s\n", err)
-			return
+			os.Exit(1)
 		}
 		for i := range keys {
 			sk := hexutil.Encode(keys[i].Key)
@@ -146,7 +143,7 @@ func derive(cmd *cobra.Command, args []string) {
 		outputContent, err = outputKey.JsonString()
 		if err != nil {
 			fmt.Fprint(os.Stderr, err)
-			return
+			os.Exit(1)
 		}
 	} else {
 		outputContent = outputKey.String()
@@ -156,7 +153,7 @@ func derive(cmd *cobra.Command, args []string) {
 		err = utils.WriteFileWhenNotExists(output, []byte(outputContent), 0600)
 		if err != nil {
 			fmt.Fprint(os.Stderr, err)
-			return
+			os.Exit(1)
 		}
 	} else {
 		fmt.Print(outputContent)

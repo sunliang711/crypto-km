@@ -68,3 +68,6 @@ func DerivesByPath(key *bip32.Key, path string, start, count uint) (keys []*bip3
 	}
 	return
 }
+
+func t() {
+}
