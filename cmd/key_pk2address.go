@@ -81,19 +81,16 @@ func pk2ethAddress(pubkey string) (string, error) {
 	}
 
 	if compressed {
-		fmt.Printf("compressed\n")
-		publicKey, err = utils.RecoverPublicKeyFromCompressed(p)
+		publicKey, err = crypto.DecompressPubkey(p)
 		if err != nil {
 			return "", err
 		}
 	} else {
-		fmt.Printf("uncompressed\n")
 		publicKey, err = crypto.UnmarshalPubkey(p)
 		if err != nil {
 			return "", err
 		}
 	}
-	fmt.Printf("publickey: %+v\n", publicKey)
 	address := crypto.PubkeyToAddress(*publicKey)
 	return address.Hex(), nil
 

@@ -68,6 +68,7 @@ func IsCompressedPublicKey(pubkey []byte) (bool, error) {
 	return false, errors.New("invalid pubkey")
 }
 
+// Not Working
 func RecoverPublicKeyFromCompressed(pubkey []byte) (*ecdsa.PublicKey, error) {
 	compressed, err := IsCompressedPublicKey(pubkey)
 	if err != nil {
@@ -77,6 +78,7 @@ func RecoverPublicKeyFromCompressed(pubkey []byte) (*ecdsa.PublicKey, error) {
 		return nil, errors.New("not compressed public key")
 	}
 
+	fmt.Printf("pubkey: %+v\n", pubkey)
 	publicKey := new(ecdsa.PublicKey)
 	x, y := elliptic.UnmarshalCompressed(crypto.S256(), pubkey)
 	if x == nil || y == nil {
